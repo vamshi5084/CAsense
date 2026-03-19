@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard — CAsense</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='translations.js') }}"></script>
+    <script src="{{ url_for('static', filename='voice-input.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+    <div class="dashboard-page">
+
+        <!-- Top Navigation -->
+        <nav class="top-nav">
+            <a href="/dashboard" class="nav-logo">💠 CAsense</a>
+            <div class="nav-links">
+                <span class="nav-greeting">Hello, <strong>{{ username }}</strong> 👋</span>
+                <form action="/update-country" method="POST"
+                    style="display:inline-flex;align-items:center;gap:6px;margin-right:8px;">
+                    <label style="color:var(--text-muted);font-size:0.8rem;">🌍</label>
+                    <select name="country" onchange="this.form.submit()"
+                        style="padding:6px 10px;background:var(--primary);border:1px solid var(--border);border-radius:var(--radius-sm);color:white;font-family:var(--font);font-size:0.85rem;cursor:pointer;">
+                        {% for c in countries %}
+                        <option value="{{ c }}" {{ 'selected' if c==country else '' }}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+                <a href="/chat" class="btn btn-ghost" data-i18n="btn_ai_chat">🤖 AI Chat</a>
+                <a href="/logout" class="btn btn-danger" data-i18n="btn_logout">Logout</a>
+            </div>
+        </nav>
+
+        <div class="dashboard-content">
+
+            <h1 class="dashboard-title" data-i18n="dash_title">Financial Dashboard</h1>
+            <p class="dashboard-subtitle"><span data-i18n="dash_subtitle">Your complete financial overview at a
+                    glance</span> · Tax region: <strong>{{ country
+                    }}</strong></p>
+
+            <!-- ── Date Range Filter ── -->
+            <div class="panel animate-fade-in-up delay-1" style="margin-bottom:24px;">
+                <div class="panel-header">
+                    <h2 class="panel-title" data-i18n="dash_filter_date">📅 Filter by Date Range</h2>
+                    {% if from_date or to_date %}
+                    <a href="/dashboard" class="btn btn-ghost" style="font-size:0.8rem;">✕ Clear Filter</a>
+                    {% endif %}
+                </div>
+                <form method="GET" action="/dashboard" class="txn-form" style="align-items:end;">
+                    <div class="form-group">
+                        <label data-i18n="dash_from_date">From Date</label>
+                        <input type="date" name="from_date" value="{{ from_date }}">
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="dash_to_date">To Date</label>
+                        <input type="date" name="to_date" value="{{ to_date }}">
+                    </div>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <button type="submit" class="btn btn-primary" style="width:100%;" data-i18n="btn_filter">🔍
+                            Filter</button>
+                    </div>
+                </form>
+                {% if from_date or to_date %}
+                <p style="margin-top:12px;color:var(--amber-light);font-size:0.85rem;">
+                    📊 Showing data {{ 'from ' + from_date if from_date else '' }}{{ ' to ' + to_date if to_date else ''
+                    }}
+                </p>
+                {% endif %}
+            </div>
+            <!-- ── Summary Cards ── -->
+            <div class="stats-grid">
+                <div class="stat-card income animate-fade-in-up delay-1">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-label" data-i18n="dash_total_income">Total Income</div>
+                    <div class="stat-value">{{ currency }}{{ "{:,.2f}".format(total_income) }}</div>
+                </div>
+
+                <div class="stat-card expense animate-fade-in-up delay-2">
+                    <div class="stat-icon">📉</div>
+                    <div class="stat-label" data-i18n="dash_total_expense">Total Expense</div>
+                    <div class="stat-value">{{ currency }}{{ "{:,.2f}".format(total_expense) }}</div>
+                </div>
+
+                <div class="stat-card profit animate-fade-in-up delay-3">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-label" data-i18n="dash_net_profit">Net Profit</div>
+                    <div class="stat-value">{{ currency }}{{ "{:,.2f}".format(profit) }}</div>
+                </div>
+
+                <div class="stat-card tax animate-fade-in-up delay-4">
+                    <div class="stat-icon">🧮</div>
+                    <div class="stat-label"><span data-i18n="dash_est_tax">Estimated Tax</span> ({{ country }})</div>
+                    <div class="stat-value">{{ currency }}{{ "{:,.2f}".format(tax) }}</div>
+                </div>
+            </div>
+
+            <!-- ── Add Transaction ── -->
+            <div class="panel animate-fade-in-up delay-3">
+                <div class="panel-header">
+                    <h2 class="panel-title" data-i18n="dash_add_txn">➕ Add Transaction</h2>
+                </div>
+                <form action="/add" method="POST" class="txn-form">
+                    <div class="form-group">
+                        <label data-i18n="dash_type">Type</label>
+                        <select name="type" required>
+                            <option value="" data-i18n="dash_select">Select</option>
+                            <option value="Income" data-i18n="dash_income">Income</option>
+                            <option value="Expense" data-i18n="dash_expense">Expense</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="dash_category">Category</label>
+                        <div style="position:relative; display:flex; align-items:center;">
+                            <input type="text" name="category" id="catInput" placeholder="e.g. Salary, Rent" required
+                                style="width:100%; padding-right: 40px;">
+                            <button type="button" onclick="startFormVoice('catInput', this)"
+                                style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:1.2rem;"
+                                title="Voice Input">🎤</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label><span data-i18n="dash_amount">Amount</span> ({{ currency }})</label>
+                        <input type="number" step="0.01" name="amount" placeholder="0.00" required min="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="dash_date">Date</label>
+                        <input type="date" name="date" required>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="dash_description">Description</label>
+                        <div style="position:relative; display:flex; align-items:center;">
+                            <input type="text" name="description" id="descInput" placeholder="Optional note"
+                                style="width:100%; padding-right: 40px;">
+                            <button type="button" onclick="startFormVoice('descInput', this)"
+                                style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:1.2rem;"
+                                title="Voice Input">🎤</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <button type="submit" class="btn btn-primary" style="width:100%"
+                            data-i18n="btn_add">Add</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- ── Bill Storage ── -->
+            <div class="panel animate-fade-in-up delay-3">
+                <div class="panel-header">
+                    <h2 class="panel-title" data-i18n="dash_bill_storage">📸 Bill Storage</h2>
+                    <span style="color: var(--text-muted); font-size: 0.85rem;">{{ bills|length }} bills saved</span>
+                </div>
+
+                <!-- Upload Form -->
+                <form action="/upload-bill" method="POST" enctype="multipart/form-data" class="bill-upload-form">
+                    <div class="bill-upload-row">
+                        <div class="form-group" style="flex:2;">
+                            <label>📄 Select Bill Photo</label>
+                            <input type="file" name="bill_file" accept="image/*,.pdf" required class="bill-file-input"
+                                id="billFileInput">
+                        </div>
+                        <div class="form-group" style="flex:2;">
+                            <label>Description</label>
+                            <div style="position:relative; display:flex; align-items:center;">
+                                <input type="text" name="bill_description" id="billDescInput"
+                                    placeholder="e.g. Electricity bill" style="width:100%; padding-right: 40px;">
+                                <button type="button" onclick="startFormVoice('billDescInput', this)"
+                                    style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:1.2rem;"
+                                    title="Voice Input">🎤</button>
+                            </div>
+                        </div>
+                        <div class="form-group" style="flex:1;">
+                            <label>Date</label>
+                            <input type="date" name="bill_date" id="billDate">
+                        </div>
+                        <div class="form-group" style="flex:0.5;">
+                            <label>&nbsp;</label>
+                            <button type="submit" class="btn btn-primary" style="width:100%;">📤 Upload</button>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- Bill Gallery -->
+                {% if bills %}
+                <div class="bill-gallery">
+                    {% for bill in bills %}
+                    <div class="bill-card">
+                        <div class="bill-preview"
+                            onclick="openBillModal('/bill-image/{{ bill['filename'] }}', '{{ bill['original_name'] }}')">
+                            {% if bill['filename'].endswith('.pdf') %}
+                            <div class="bill-pdf-icon">📄 PDF</div>
+                            {% else %}
+                            <img src="/bill-image/{{ bill['filename'] }}"
+                                alt="{{ bill['description'] or bill['original_name'] }}" loading="lazy">
+                            {% endif %}
+                        </div>
+                        <div class="bill-info">
+                            <div class="bill-desc">{{ bill['description'] or bill['original_name'] }}</div>
+                            <div class="bill-date">📅 {{ bill['upload_date'] }}</div>
+                        </div>
+                        <form action="/delete-bill/{{ bill['id'] }}" method="POST" style="display:inline;"
+                            onsubmit="return confirm('Delete this bill?')">
+                            <button type="submit" class="btn btn-danger" style="width:100%;margin-top:8px;">🗑️
+                                Delete</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state" style="padding:24px;">
+                    <div class="empty-icon">🧾</div>
+                    <p>No bills uploaded yet. Upload your first bill above!</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- ── Charts ── -->
+            <div class="charts-grid">
+                <div class="chart-panel animate-fade-in-up delay-3">
+                    <h3>🍩 Income vs Expense Overview</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="doughnutChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-panel animate-fade-in-up delay-4">
+                    <h3>📊 Monthly Income & Expense</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-panel animate-fade-in-up delay-5">
+                    <h3>💰 Top Expense Categories</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="expensePieChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-panel animate-fade-in-up delay-6">
+                    <h3>🎯 Category Distribution</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="polarChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Transaction History ── -->
+            <div class="panel animate-fade-in-up delay-4">
+                <div class="panel-header">
+                    <h2 class="panel-title" data-i18n="dash_txn_history">📋 Transaction History</h2>
+                    <span style="color: var(--text-muted); font-size: 0.85rem;">{{ transactions|length }} records</span>
+                </div>
+
+                {% if transactions %}
+                <div style="overflow-x: auto;">
+                    <table class="txn-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="dash_type">Type</th>
+                                <th data-i18n="dash_category">Category</th>
+                                <th data-i18n="dash_amount">Amount</th>
+                                <th data-i18n="dash_date">Date</th>
+                                <th data-i18n="dash_description">Description</th>
+                                <th data-i18n="dash_action">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in transactions %}
+                            <tr>
+                                <td>
+                                    <span
+                                        class="badge {{ 'badge-income' if t['type'] == 'Income' else 'badge-expense' }}">
+                                        {{ t['type'] }}
+                                    </span>
+                                </td>
+                                <td>{{ t['category'] }}</td>
+                                <td style="font-weight: 600;">{{ currency }}{{ "{:,.2f}".format(t['amount']) }}</td>
+                                <td>{{ t['date'] }}</td>
+                                <td
+                                    style="color: var(--text-muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                    {{ t['description'] or '—' }}</td>
+                                <td>
+                                    <form action="/delete/{{ t['id'] }}" method="POST" style="display:inline;"
+                                        onsubmit="return confirm('Delete this transaction?')">
+                                        <button type="submit" class="btn btn-danger">🗑️ Del</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-icon">📭</div>
+                    <p>No transactions yet. Add your first one above!</p>
+                </div>
+                {% endif %}
+            </div>
+
+        </div><!-- /dashboard-content -->
+    </div><!-- /dashboard-page -->
+
+    <!-- ── Bill Image Modal ── -->
+    <div class="bill-modal" id="billModal" onclick="closeBillModal()">
+        <div class="bill-modal-content" onclick="event.stopPropagation()">
+            <button class="bill-modal-close" onclick="closeBillModal()">✕</button>
+            <img id="billModalImg" src="" alt="Bill">
+            <p id="billModalName" class="bill-modal-name"></p>
+        </div>
+    </div>
+
+    <!-- ── AI Widget ── -->
+    <div class="ai-widget-container" id="aiWidgetContainer">
+        <!-- Chat Window -->
+        <div class="ai-widget-window" id="aiWidgetWindow" style="display: none;">
+            <div class="ai-widget-header">
+                <h3>🤖 AI Assistant</h3>
+                <button class="ai-widget-close" onclick="toggleAiWidget()">✕</button>
+            </div>
+            <div class="ai-widget-messages" id="aiWidgetMessages">
+                <div class="message ai">
+                    <div class="message-bubble">
+                        👋 Hello <strong>{{ username }}</strong>! I'm your CAsense AI assistant. Ask me anything about your finances!
+                    </div>
+                </div>
+            </div>
+            <div class="typing-indicator" id="widgetTypingIndicator" style="display:none; padding: 16px;">
+                <div class="message ai">
+                    <div class="message-bubble typing-bubble">
+                        <div class="typing-dots"><span></span><span></span><span></span></div>
+                    </div>
+                </div>
+            </div>
+            <form class="ai-widget-input-area" id="aiWidgetForm" onsubmit="sendWidgetMessage(event)">
+                <input type="text" id="aiWidgetInput" placeholder="Ask AI..." required autocomplete="off">
+                <button type="button" class="btn voice-btn" onclick="startFormVoice('aiWidgetInput', this)" title="Voice Input 🎤" style="padding: 0 8px; background: none; border: none; font-size: 1.2rem; cursor: pointer;">🎤</button>
+                <button type="submit" class="btn btn-primary" id="aiWidgetSendBtn" style="padding: 8px 12px; font-size: 0.9rem;">➤</button>
+            </form>
+        </div>
+        <!-- Floating Button -->
+        <button class="ai-widget-btn" onclick="toggleAiWidget()" id="aiWidgetToggleBtn" title="Chat with AI">
+            🤖
+        </button>
+    </div>
+
+    <!-- ── Chart.js Scripts ── -->
+    <script>
+        // ╔═══════════════════════════════════════════════════════════════╗
+        // ║ CHART DATA & DASHBOARD LOGIC                                 ║
+        // ╚═══════════════════════════════════════════════════════════════╝
+
+        const income = {{ total_income }};
+        const expense = {{ total_expense }};
+
+        const lang = getCurrentLanguage();
+        const lblIncome = (TRANSLATIONS['dash_income'] && TRANSLATIONS['dash_income'][lang]) ? TRANSLATIONS['dash_income'][lang] : 'Income';
+        const lblExpense = (TRANSLATIONS['dash_expense'] && TRANSLATIONS['dash_expense'][lang]) ? TRANSLATIONS['dash_expense'][lang] : 'Expense';
+        const lblProfit = (TRANSLATIONS['dash_net_profit'] && TRANSLATIONS['dash_net_profit'][lang]) ? TRANSLATIONS['dash_net_profit'][lang] : 'Profit';
+
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.font.family = "'Inter', sans-serif";
+
+        if (income > 0 || expense > 0) {
+            new Chart(document.getElementById('doughnutChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: [lblIncome, lblExpense],
+                    datasets: [{
+                        data: [income, expense],
+                        backgroundColor: ['#10b981', '#ef4444'],
+                        borderColor: ['#059669', '#dc2626'],
+                        borderWidth: 2,
+                        hoverOffset: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    cutout: '65%',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true } }
+                    }
+                }
+            });
+        } else {
+            document.getElementById('doughnutChart').parentElement.innerHTML =
+                '<div class="empty-state"><p>Add transactions to see the chart</p></div>';
+        }
+
+        // ── Fetch monthly data for Bar & Line charts ──
+        const fromDate = '{{ from_date }}';
+        const toDate = '{{ to_date }}';
+        let chartUrl = '/api/chart-data';
+        const chartParams = [];
+        if (fromDate) chartParams.push('from_date=' + fromDate);
+        if (toDate) chartParams.push('to_date=' + toDate);
+        if (chartParams.length) chartUrl += '?' + chartParams.join('&');
+
+        fetch(chartUrl)
+            .then(r => r.json())
+            .then(data => {
+                const months = data.months.map(m => {
+                    const [y, mo] = m.split('-');
+                    return new Date(y, mo - 1).toLocaleString('default', { month: 'short', year: '2-digit' });
+                });
+
+                if (months.length === 0) {
+                    document.getElementById('barChart').parentElement.innerHTML =
+                        '<div class="empty-state"><p>Add transactions to see trends</p></div>';
+                    document.getElementById('expensePieChart').parentElement.innerHTML =
+                        '<div class="empty-state"><p>Add transactions to see categories</p></div>';
+                    document.getElementById('polarChart').parentElement.innerHTML =
+                        '<div class="empty-state"><p>Add transactions to see distribution</p></div>';
+                    return;
+                }
+
+                // ═══════════════════════════════════════════════════════════════
+                // CHART 1: BAR CHART - Monthly Income & Expense
+                // ═══════════════════════════════════════════════════════════════
+                new Chart(document.getElementById('barChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: months,
+                        datasets: [
+                            {
+                                label: lblIncome,
+                                data: data.income,
+                                backgroundColor: 'rgba(16, 185, 129, 0.7)',
+                                borderColor: '#10b981',
+                                borderWidth: 1,
+                                borderRadius: 6
+                            },
+                            {
+                                label: lblExpense,
+                                data: data.expense,
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                                borderColor: '#ef4444',
+                                borderWidth: 1,
+                                borderRadius: 6
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true } }
+                        },
+                        scales: {
+                            x: { grid: { display: false } },
+                            y: { grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }
+                        }
+                    }
+                });
+
+                // ═══════════════════════════════════════════════════════════════
+                // CHART 3: PIE CHART - Top Expense Categories
+                // ═══════════════════════════════════════════════════════════════
+                if (data.categories && data.categories.expense && Object.keys(data.categories.expense).length > 0) {
+                    const expenseCategories = data.categories.expense;
+                    const categoryNames = Object.keys(expenseCategories).slice(0, 6); // Top 6
+                    const categoryValues = categoryNames.map(cat => expenseCategories[cat]);
+                    
+                    const colors = [
+                        'rgba(239, 68, 68, 0.8)',    // Red
+                        'rgba(249, 115, 22, 0.8)',   // Orange
+                        'rgba(245, 158, 11, 0.8)',   // Amber
+                        'rgba(34, 197, 94, 0.8)',    // Green
+                        'rgba(59, 130, 246, 0.8)',   // Blue
+                        'rgba(139, 92, 246, 0.8)'    // Purple
+                    ];
+
+                    new Chart(document.getElementById('expensePieChart'), {
+                        type: 'pie',
+                        data: {
+                            labels: categoryNames,
+                            datasets: [{
+                                data: categoryValues,
+                                backgroundColor: colors,
+                                borderColor: colors.map(c => c.replace('0.8', '1')),
+                                borderWidth: 2,
+                                hoverOffset: 10
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            plugins: {
+                                legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true } }
+                            }
+                        }
+                    });
+                } else {
+                    document.getElementById('expensePieChart').parentElement.innerHTML =
+                        '<div class="empty-state"><p>No expense categories yet</p></div>';
+                }
+
+                // ═══════════════════════════════════════════════════════════════
+                // CHART 4: POLAR AREA CHART - Category Distribution
+                // ═══════════════════════════════════════════════════════════════
+                if (data.categories && data.categories.expense && Object.keys(data.categories.expense).length > 0) {
+                    const allExpenseCategories = data.categories.expense;
+                    const categoryNamesAll = Object.keys(allExpenseCategories);
+                    const categoryValuesAll = categoryNamesAll.map(cat => allExpenseCategories[cat]);
+                    
+                    const incomeCategories = data.categories.income && Object.keys(data.categories.income).length > 0 
+                        ? data.categories.income 
+                        : {};
+                    const incomeNames = Object.keys(incomeCategories).slice(0, 4);
+                    const incomeValues = incomeNames.map(cat => incomeCategories[cat]);
+
+                    const allNames = [...categoryNamesAll.slice(0, 5), ...incomeNames];
+                    const allValues = [...categoryValuesAll.slice(0, 5), ...incomeValues];
+
+                    const polarColors = [
+                        'rgba(239, 68, 68, 0.7)',
+                        'rgba(249, 115, 22, 0.7)',
+                        'rgba(245, 158, 11, 0.7)',
+                        'rgba(34, 197, 94, 0.7)',
+                        'rgba(59, 130, 246, 0.7)',
+                        'rgba(168, 85, 247, 0.7)',
+                        'rgba(14, 165, 233, 0.7)',
+                        'rgba(236, 72, 153, 0.7)'
+                    ];
+
+                    new Chart(document.getElementById('polarChart'), {
+                        type: 'polarArea',
+                        data: {
+                            labels: allNames,
+                            datasets: [{
+                                label: 'Amount',
+                                data: allValues,
+                                backgroundColor: polarColors.slice(0, allNames.length),
+                                borderColor: polarColors.slice(0, allNames.length).map(c => c.replace('0.7', '1')),
+                                borderWidth: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            plugins: {
+                                legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true } }
+                            },
+                            scales: {
+                                r: {
+                                    grid: { color: 'rgba(255,255,255,0.1)' },
+                                    ticks: { color: '#94a3b8' }
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    document.getElementById('polarChart').parentElement.innerHTML =
+                        '<div class="empty-state"><p>No data to display</p></div>';
+                }
+            })
+            .catch(() => { });
+
+        // Auto-set today's date
+        const txnDateInput = document.querySelector('form[action="/add"] input[type="date"]');
+        if (txnDateInput && !txnDateInput.value) {
+            txnDateInput.value = new Date().toISOString().split('T')[0];
+        }
+        const billDateInput = document.getElementById('billDate');
+        if (billDateInput && !billDateInput.value) {
+            billDateInput.value = new Date().toISOString().split('T')[0];
+        }
+
+        // Bill Modal
+        function openBillModal(src, name) {
+            const modal = document.getElementById('billModal');
+            document.getElementById('billModalImg').src = src;
+            document.getElementById('billModalName').textContent = name;
+            modal.classList.add('active');
+        }
+        function closeBillModal() {
+            document.getElementById('billModal').classList.remove('active');
+        }
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeBillModal();
+        });
+
+        // ╔═══════════════════════════════════════════════════════════════╗
+        // ║ AI WIDGET LOGIC                                              ║
+        // ╚═══════════════════════════════════════════════════════════════╝
+
+        // ── AI Widget Logic ──
+        function toggleAiWidget() {
+            const win = document.getElementById('aiWidgetWindow');
+            if(win.style.display === 'none' || win.style.display === '') {
+                win.style.display = 'flex';
+                const msgContainer = document.getElementById('aiWidgetMessages');
+                msgContainer.scrollTop = msgContainer.scrollHeight;
+            } else {
+                win.style.display = 'none';
+            }
+        }
+
+        async function sendWidgetMessage(e) {
+            e.preventDefault();
+            const input = document.getElementById('aiWidgetInput');
+            const sendBtn = document.getElementById('aiWidgetSendBtn');
+            const msgContainer = document.getElementById('aiWidgetMessages');
+            const typingInd = document.getElementById('widgetTypingIndicator');
+            const message = input.value.trim();
+            if(!message) return;
+
+            // Append user message
+            const userDiv = document.createElement('div');
+            userDiv.className = 'message user';
+            userDiv.innerHTML = `<div class="message-bubble">${message}</div>`;
+            msgContainer.appendChild(userDiv);
+            msgContainer.scrollTop = msgContainer.scrollHeight;
+
+            input.value = '';
+            sendBtn.disabled = true;
+            typingInd.style.display = 'flex';
+            msgContainer.scrollTop = msgContainer.scrollHeight;
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+                const data = await response.json();
+                typingInd.style.display = 'none';
+
+                let aiText = data.response ? data.response : ('⚠️ ' + data.error);
+                let formatted = aiText
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/^• /gm, '&bull; ')
+                    .replace(/^- /gm, '&bull; ')
+                    .replace(/\n/g, '<br>');
+
+                const aiDiv = document.createElement('div');
+                aiDiv.className = 'message ai';
+                aiDiv.innerHTML = `<div class="message-bubble">${formatted}</div>`;
+                msgContainer.appendChild(aiDiv);
+            } catch (error) {
+                typingInd.style.display = 'none';
+                const errDiv = document.createElement('div');
+                errDiv.className = 'message ai';
+                errDiv.innerHTML = `<div class="message-bubble">⚠️ Network error. Please try again.</div>`;
+                msgContainer.appendChild(errDiv);
+            }
+
+            sendBtn.disabled = false;
+            msgContainer.scrollTop = msgContainer.scrollHeight;
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — CAsense</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+    <div class="auth-page">
+        <div class="auth-card">
+            <div class="logo">💠 CAsense</div>
+            <h2 data-i18n="login_welcome">Welcome Back</h2>
+            <p class="subtitle" data-i18n="login_subtitle">Sign in with your username or Google email</p>
+
+            {% if error %}
+            <div class="error-msg">⚠️ {{ error }}</div>
+            {% endif %}
+
+            <form method="POST">
+                <div class="form-group">
+                    <label for="username" data-i18n="label_username_email">Username or Email</label>
+                    <input type="text" id="username" name="username" placeholder="Username or Google email" required
+                        autofocus>
+                </div>
+
+                <div class="form-group">
+                    <label for="password" data-i18n="label_password">Password</label>
+                    <input type="password" id="password" name="password" placeholder="Enter your password" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary" data-i18n="btn_sign_in">Sign In</button>
+            </form>
+
+            <div class="auth-footer">
+                <span data-i18n="login_no_account">Don't have an account?</span> <a href="/register"
+                    data-i18n="login_create_one">Create one</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='translations.js') }}"></script>
+</body>
+
+</html>

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chatbot — CAsense</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+    <div class="chat-page">
+
+        <!-- Top Nav -->
+        <nav class="top-nav">
+            <a href="/dashboard" class="nav-logo">💠 CAsense</a>
+            <div class="nav-links">
+                <a href="/dashboard" class="btn btn-ghost" data-i18n="dash_back">← Back to Dashboard</a>
+                <a href="/logout" class="btn btn-danger" data-i18n="btn_logout">Logout</a>
+            </div>
+        </nav>
+
+        <div class="chat-container">
+
+            <div class="chat-header">
+                <h1 data-i18n="chat_title">🤖 AI Financial & Business Assistant</h1>
+                <p data-i18n="chat_subtitle">Powered by Google Gemini AI — Ask anything about your finances or business
+                </p>
+
+                <!-- Language Selector + Clear Chat -->
+                <div class="chat-controls">
+                    <div class="language-selector">
+                        <label for="langSelect" data-i18n="chat_lang_label">🌐 Language:</label>
+                        <select id="langSelect" class="lang-switcher-select" onchange="changeLanguage(this.value)">
+                            {% for key, lang in languages.items() %}
+                            <option value="{{ key }}" {{ 'selected' if key==current_language else '' }}>
+                                {{ lang.native }} ({{ lang.name }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button class="btn btn-ghost clear-chat-btn" onclick="clearChat()" title="Clear conversation"
+                        data-i18n="chat_clear">
+                        🗑️ Clear Chat
+                    </button>
+                </div>
+            </div>
+
+            <!-- Messages -->
+            <div class="chat-messages" id="chatMessages">
+                {% if not chat_history %}
+                <div class="message ai">
+                    <div class="message-avatar">🤖</div>
+                    <div class="message-bubble">
+                        👋 Hello <strong>{{ username }}</strong>! I'm your CAsense AI assistant powered by
+                        <strong>Gemini AI</strong>.
+
+                        I can answer <strong>any question</strong> about your finances, business, or anything else — in
+                        your preferred language!
+
+                        💵 <strong>Financial queries</strong> — income, expenses, tax, profit, savings
+                        📈 <strong>Business advice</strong> — growth, marketing, investment, hiring
+                        🌐 <strong>Multi-language</strong> — Switch language above to chat in Telugu, Hindi, Tamil,
+                        Urdu, or Kannada
+                        🎤 <strong>Voice input</strong> — Click the microphone button to speak your question
+
+                        Just type or speak your question below! 🚀
+                    </div>
+                </div>
+                {% endif %}
+
+                {% for msg in chat_history %}
+                <div class="message {{ msg.role }}">
+                    <div class="message-avatar">{{ '👤' if msg.role == 'user' else '🤖' }}</div>
+                    <div class="message-bubble">{{ msg.text }}</div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Typing Indicator (hidden by default) -->
+            <div class="typing-indicator" id="typingIndicator" style="display:none;">
+                <div class="message ai">
+                    <div class="message-avatar">🤖</div>
+                    <div class="message-bubble typing-bubble">
+                        <div class="typing-dots">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <span class="typing-text">AI is thinking...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="quick-actions">
+                <button class="chip" onclick="sendQuick('What is my financial summary?')">📊 Summary</button>
+                <button class="chip" onclick="sendQuick('How much profit do I have?')">💰 Profit</button>
+                <button class="chip" onclick="sendQuick('Show my tax details')">🧮 Tax</button>
+                <button class="chip" onclick="sendQuick('What are my top expenses?')">📉 Expenses</button>
+                <button class="chip" onclick="sendQuick('This month overview')">📅 This Month</button>
+                <button class="chip" onclick="sendQuick('How to improve my business?')">🚀 Grow Biz</button>
+                <button class="chip" onclick="sendQuick('Give me financial tips')">💡 Tips</button>
+                <button class="chip" onclick="sendQuick('How to reduce my costs?')">✂️ Cut Costs</button>
+            </div>
+
+            <!-- Input with Voice Button -->
+            <form class="chat-input-area" id="chatForm" onsubmit="sendMessage(event)">
+                <input type="text" name="message" id="chatInput"
+                    placeholder="Ask me anything about your finances, business, or more..." data-i18n="chat_placeholder"
+                    required autocomplete="off" autofocus>
+                <button type="button" class="btn voice-btn" id="voiceBtn" onclick="toggleVoice()"
+                    title="Voice Input 🎤">
+                    🎤
+                </button>
+                <button type="submit" class="btn btn-primary" id="sendBtn" data-i18n="btn_send">Send ➤</button>
+            </form>
+
+            <!-- Voice Status -->
+            <div class="voice-status" id="voiceStatus" style="display:none;">
+                <div class="voice-pulse"></div>
+                <span id="voiceStatusText">🎤 Listening...</span>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script src="{{ url_for('static', filename='translations.js') }}"></script>
+    <script>
+        // Auto-scroll to bottom
+        const chatMessages = document.getElementById('chatMessages');
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        // ═══════════════════════════════════════
+        // SEND MESSAGE (AJAX)
+        // ═══════════════════════════════════════
+        async function sendMessage(e) {
+            e.preventDefault();
+            const input = document.getElementById('chatInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const message = input.value.trim();
+            if (!message) return;
+
+            appendMessage('user', message);
+            input.value = '';
+            sendBtn.disabled = true;
+            sendBtn.textContent = '⏳';
+
+            showTyping();
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+
+                const data = await response.json();
+                hideTyping();
+
+                if (data.response) {
+                    appendMessage('ai', data.response);
+                } else if (data.error) {
+                    appendMessage('ai', '⚠️ ' + data.error);
+                }
+            } catch (error) {
+                hideTyping();
+                appendMessage('ai', '⚠️ Network error. Please check your connection and try again.');
+            }
+
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send ➤';
+        }
+
+        // ═══════════════════════════════════════
+        // APPEND MESSAGE TO UI
+        // ═══════════════════════════════════════
+        function appendMessage(role, text) {
+            const container = document.getElementById('chatMessages');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${role}`;
+
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = role === 'user' ? '👤' : '🤖';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+
+            if (role === 'ai') {
+                let formatted = text
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/^• /gm, '&bull; ')
+                    .replace(/^- /gm, '&bull; ')
+                    .replace(/\n/g, '<br>');
+                bubble.innerHTML = formatted;
+            } else {
+                bubble.textContent = text;
+            }
+
+            msgDiv.appendChild(avatar);
+            msgDiv.appendChild(bubble);
+            container.appendChild(msgDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function showTyping() {
+            const indicator = document.getElementById('typingIndicator');
+            indicator.style.display = 'block';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function hideTyping() {
+            document.getElementById('typingIndicator').style.display = 'none';
+        }
+
+        function sendQuick(text) {
+            document.getElementById('chatInput').value = text;
+            document.getElementById('chatForm').dispatchEvent(new Event('submit'));
+        }
+
+        // ═══════════════════════════════════════
+        // LANGUAGE CHANGE
+        // ═══════════════════════════════════════
+        async function changeLanguage(lang) {
+            try {
+                // Update server session
+                const response = await fetch('/set-language', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ language: lang })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    // Also update localStorage for global switcher
+                    localStorage.setItem('casense_language', lang);
+                    // Apply translations on this page
+                    if (typeof applyTranslations === 'function') {
+                        applyTranslations(lang);
+                    }
+                    const langNames = {};
+                    document.querySelectorAll('#langSelect option').forEach(opt => {
+                        langNames[opt.value] = opt.textContent.trim();
+                    });
+                    appendMessage('ai', `🌐 Language changed to <strong>${langNames[lang] || lang}</strong>. I'll now respond in this language!`);
+                }
+            } catch (error) {
+                console.error('Failed to set language:', error);
+            }
+        }
+
+        // ═══════════════════════════════════════
+        // CLEAR CHAT
+        // ═══════════════════════════════════════
+        async function clearChat() {
+            if (!confirm('Clear all chat history?')) return;
+            try {
+                await fetch('/clear-chat', { method: 'POST' });
+                document.getElementById('chatMessages').innerHTML = '';
+                appendMessage('ai', '🧹 Chat cleared! How can I help you today?');
+            } catch (error) {
+                console.error('Failed to clear chat:', error);
+            }
+        }
+
+        // ═══════════════════════════════════════
+        // VOICE INPUT (Web Speech API) - IMPROVED
+        // ═══════════════════════════════════════
+        let recognition = null;
+        let isListening = false;
+        let recognitionTimeout = null;
+
+        // Speech language codes mapping (Enhanced with fallbacks)
+        const speechLangCodes = {
+            english: ['en-US', 'en-IN', 'en-GB'],
+            telugu: ['te-IN', 'te'],
+            hindi: ['hi-IN', 'hi'],
+            tamil: ['ta-IN', 'ta'],
+            urdu: ['ur-IN', 'ur-PK', 'ur'],
+            kannada: ['kn-IN', 'kn']
+        };
+
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                const voiceBtn = document.getElementById('voiceBtn');
+                if (voiceBtn) {
+                    voiceBtn.style.display = 'none';
+                }
+                console.warn('⚠️ Speech Recognition not supported in this browser');
+                return false;
+            }
+
+            try {
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = true;
+                recognition.maxAlternatives = 1;
+
+                recognition.onstart = () => {
+                    isListening = true;
+                    const voiceBtn = document.getElementById('voiceBtn');
+                    const voiceStatus = document.getElementById('voiceStatus');
+                    if (voiceBtn) voiceBtn.classList.add('listening');
+                    if (voiceStatus) {
+                        voiceStatus.style.display = 'flex';
+                        document.getElementById('voiceStatusText').textContent = '🎤 Listening... Speak now';
+                    }
+                    clearTimeout(recognitionTimeout);
+                    // Auto-stop after 10 seconds of silence
+                    recognitionTimeout = setTimeout(() => {
+                        if (isListening && recognition) {
+                            recognition.stop();
+                        }
+                    }, 10000);
+                };
+
+                recognition.onresult = (event) => {
+                    let transcript = '';
+                    let isFinal = false;
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        const t = event.results[i][0].transcript;
+                        transcript += (i > event.resultIndex ? ' ' : '') + t;
+                        if (event.results[i].isFinal) {
+                            isFinal = true;
+                        }
+                    }
+                    
+                    const chatInput = document.getElementById('chatInput');
+                    if (chatInput) {
+                        chatInput.value = transcript;
+                    }
+                    
+                    const voiceStatusText = document.getElementById('voiceStatusText');
+                    if (voiceStatusText) {
+                        if (isFinal) {
+                            voiceStatusText.textContent = '✅ Got it!';
+                        } else {
+                            voiceStatusText.textContent = '🎤 ' + transcript.substring(0, 40) + (transcript.length > 40 ? '...' : '');
+                        }
+                    }
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('🔴 Speech recognition error:', event.error);
+                    stopListening();
+                    handleSpeechError(event.error);
+                };
+
+                recognition.onend = () => {
+                    stopListening();
+                    clearTimeout(recognitionTimeout);
+                };
+
+                return true;
+            } catch (e) {
+                console.error('Failed to initialize speech recognition:', e);
+                return false;
+            }
+        }
+
+        function handleSpeechError(error) {
+            const voiceStatusText = document.getElementById('voiceStatusText');
+            let errorMsg = '';
+            
+            switch(error) {
+                case 'not-allowed':
+                    errorMsg = '🔒 Microphone access denied. Allow it in browser settings.';
+                    appendMessage('ai', '⚠️ Microphone access denied. Please allow microphone access in your browser settings.');
+                    break;
+                case 'no-speech':
+                    errorMsg = '😶 No speech detected. Please try again.';
+                    break;
+                case 'network':
+                    errorMsg = '⚠️ Network error. Check your connection.';
+                    break;
+                case 'aborted':
+                    errorMsg = '⏹️ Voice input stopped.';
+                    break;
+                default:
+                    errorMsg = '⚠️ Voice error: ' + error;
+            }
+            
+            if (voiceStatusText) {
+                voiceStatusText.textContent = errorMsg;
+                setTimeout(() => {
+                    const voiceStatus = document.getElementById('voiceStatus');
+                    if (voiceStatus) voiceStatus.style.display = 'none';
+                }, 2500);
+            }
+        }
+
+        function toggleVoice() {
+            if (!recognition) {
+                const initialized = initSpeechRecognition();
+                if (!initialized) {
+                    appendMessage('ai', '⚠️ Voice input is not supported in your browser. Please use Chrome, Edge, or Safari.');
+                    return;
+                }
+            }
+
+            if (isListening) {
+                recognition.stop();
+            } else {
+                // Get current language and set appropriate recognition language
+                const currentLang = document.getElementById('langSelect').value || 'english';
+                const langCodes = speechLangCodes[currentLang] || speechLangCodes['english'];
+                recognition.lang = langCodes[0]; // Use first language code as primary
+                
+                try {
+                    clearTimeout(recognitionTimeout);
+                    recognition.start();
+                } catch (e) {
+                    if (e.name !== 'InvalidStateError') {
+                        console.error('Speech start error:', e);
+                        appendMessage('ai', '⚠️ Failed to start voice input. Please try again.');
+                    }
+                }
+            }
+        }
+
+        function stopListening() {
+            isListening = false;
+            const voiceBtn = document.getElementById('voiceBtn');
+            if (voiceBtn) {
+                voiceBtn.classList.remove('listening');
+            }
+            clearTimeout(recognitionTimeout);
+            setTimeout(() => {
+                const voiceStatus = document.getElementById('voiceStatus');
+                if (voiceStatus) voiceStatus.style.display = 'none';
+            }, 1500);
+        }
+
+        // Initialize speech recognition on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initSpeechRecognition();
+        });
+        
+        // Also try to initialize immediately if DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initSpeechRecognition);
+        } else {
+            initSpeechRecognition();
+        }
+
+        // ═══════════════════════════════════════
+        // FORMAT EXISTING MESSAGES ON LOAD
+        // ═══════════════════════════════════════
+        document.querySelectorAll('.message.ai .message-bubble').forEach(bubble => {
+            let text = bubble.textContent;
+            let formatted = text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/^• /gm, '&bull; ')
+                .replace(/^- /gm, '&bull; ')
+                .replace(/\n/g, '<br>');
+            bubble.innerHTML = formatted;
+        });
+    </script>
+
+</body>
+
+</html>
