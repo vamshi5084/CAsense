@@ -8,6 +8,11 @@ import json
 
 from datetime import datetime, timedelta
 from functools import wraps
+from dotenv import load_dotenv
+
+# Load secret environment variables from .env file
+load_dotenv()
+
 app = Flask(__name__, static_folder="static")
 app.secret_key = os.environ.get("SECRET_KEY", "cAsense_secret_key_2026")
 
